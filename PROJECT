@@ -1,3 +1,7 @@
 domain: b2w.io
 repo: github.com/b2wdigital/restQL-operator
+resources:
+- group: oss
+  kind: RestQL
+  version: v1alpha1
 version: "2"

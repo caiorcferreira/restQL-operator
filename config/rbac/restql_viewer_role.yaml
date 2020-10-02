@@ -1,0 +1,20 @@
+# permissions for end users to view restqls.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: restql-viewer-role
+rules:
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - restqls
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - restqls/status
+  verbs:
+  - get

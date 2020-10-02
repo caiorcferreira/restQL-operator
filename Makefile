@@ -78,3 +78,10 @@ CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
+
+kustomize:
+	brew update
+	brew install kustomize
+
+remove-kustomize:
+	brew uninstall kustomize

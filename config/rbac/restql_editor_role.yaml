@@ -1,0 +1,24 @@
+# permissions for end users to edit restqls.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: restql-editor-role
+rules:
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - restqls
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - restqls/status
+  verbs:
+  - get

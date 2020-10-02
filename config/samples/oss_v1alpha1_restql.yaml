@@ -1,0 +1,32 @@
+apiVersion: oss.b2w.io/v1alpha1
+kind: RestQL
+metadata:
+  name: restql-sample
+spec:
+  # Add fields here
+  config: |
+    http:
+      forwardPrefix: c_
+
+      server:
+        middlewares:
+          requestId:
+            header: "X-TID"
+            strategy: uuid
+
+    logging:
+      enable: true
+      timestamp: true
+      level: debug
+      format: pretty
+
+    cache:
+      parser:
+        maxSize: 500
+      query:
+        maxSize: 500
+      mappings:
+        maxSize: 1000
+        expiration: 24h
+        refreshInterval: 100ms
+        refreshQueueLength: 10
