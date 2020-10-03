@@ -17,7 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	apps "k8s.io/api/apps/v1beta2"
+	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,9 +29,11 @@ type RestQLSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Config is an YAML with RestQL parameters
+	// +optional
 	Config string `json:"config,omitempty"`
 
 	// Deployment defines the RestQL application
+	// +optional
 	Deployment apps.DeploymentSpec `json:"deployment,omitempty"`
 }
 

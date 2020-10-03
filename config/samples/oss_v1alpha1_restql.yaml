@@ -3,23 +3,19 @@ kind: RestQL
 metadata:
   name: restql-sample
 spec:
-  # Add fields here
   config: |
     http:
       forwardPrefix: c_
-
       server:
         middlewares:
           requestId:
             header: "X-TID"
             strategy: uuid
-
     logging:
       enable: true
       timestamp: true
       level: debug
       format: pretty
-
     cache:
       parser:
         maxSize: 500
@@ -30,3 +26,69 @@ spec:
         expiration: 24h
         refreshInterval: 100ms
         refreshQueueLength: 10
+    mappings:
+      planet: https://swapi.dev/api/planets/:id
+    queries:
+      test:
+        planet-info:
+          - "from planet with id = $id"
+  deployment:
+    progressDeadlineSeconds: 12000
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: restql-golang-server-v4
+    template:
+      metadata:
+        labels:
+          app: restql-golang-server-v4
+      spec:
+        restartPolicy: Always
+        terminationGracePeriodSeconds: 90
+        containers:
+        - env:
+          - name: RESTQL_PORT
+            value: "8080"
+          - name: RESTQL_HEALTH_PORT
+            value: "8081"
+          image: b2wdigital/restql:v4.0.4
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                - /bin/sleep
+                - "10"
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /resource-status
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: restql-golang-server
+          ports:
+          - containerPort: 8080
+            name: 8080tcp2
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /resource-status
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 2
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "1"
+              memory: 200Mi
+            requests:
+              cpu: "1"
+              memory: 200Mi
