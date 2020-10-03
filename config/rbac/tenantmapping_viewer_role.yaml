@@ -1,0 +1,20 @@
+# permissions for end users to view tenantmappings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenantmapping-viewer-role
+rules:
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - tenantmappings
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - tenantmappings/status
+  verbs:
+  - get

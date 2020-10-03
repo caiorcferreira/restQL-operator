@@ -1,0 +1,64 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.3.0
+  creationTimestamp: null
+  name: tenantmappings.oss.b2w.io
+spec:
+  group: oss.b2w.io
+  names:
+    kind: TenantMapping
+    listKind: TenantMappingList
+    plural: tenantmappings
+    singular: tenantmapping
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      description: TenantMapping is the Schema for the tenantmappings API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: TenantMappingSpec defines the desired state of TenantMapping
+          properties:
+            mappings:
+              additionalProperties:
+                type: string
+              description: Mappings are name/URL associations used to resolved resources
+                in restQL
+              type: object
+            tenant:
+              description: Tenant is the identifier under which mappings are grouped
+              type: string
+          required:
+          - mappings
+          - tenant
+          type: object
+        status:
+          description: TenantMappingStatus defines the observed state of TenantMapping
+          type: object
+      type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

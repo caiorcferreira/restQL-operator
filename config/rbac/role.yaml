@@ -46,3 +46,23 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - tenantmappings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - tenantmappings/status
+  verbs:
+  - get
+  - patch
+  - update

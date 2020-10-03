@@ -1,0 +1,24 @@
+# permissions for end users to edit tenantmappings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenantmapping-editor-role
+rules:
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - tenantmappings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - tenantmappings/status
+  verbs:
+  - get

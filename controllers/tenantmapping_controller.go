@@ -18,55 +18,51 @@ package controllers
 
 import (
 	"context"
-	"github.com/go-logr/logr"
-	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ossv1alpha1 "github.com/b2wdigital/restQL-operator/api/v1alpha1"
 )
 
-// QueryReconciler reconciles a Query object
-type QueryReconciler struct {
+// TenantMappingReconciler reconciles a TenantMapping object
+type TenantMappingReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=oss.b2w.io,resources=queries,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=oss.b2w.io,resources=queries/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=oss.b2w.io,resources=tenantmappings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=oss.b2w.io,resources=tenantmappings/status,verbs=get;update;patch
 
-func (r *QueryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *TenantMappingReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	log := r.Log.WithValues("query", req.NamespacedName)
 
-	query := &ossv1alpha1.Query{}
-	err := r.Get(ctx, req.NamespacedName, query)
+	tenant := &ossv1alpha1.TenantMapping{}
+	err := r.Get(ctx, req.NamespacedName, tenant)
 	switch {
 	case apierrors.IsNotFound(err):
-		err := r.reconcileDeletedQuery(ctx, log, req.NamespacedName)
+		err := r.reconcileDeletedTenant(ctx, log, req.NamespacedName)
 		return ctrl.Result{}, err
 	case err != nil:
-		log.Error(err, "unable to fetch Query object")
+		log.Error(err, "unable to fetch TenantMapping object")
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileInsertedQuery(ctx, log, query)
+	err = r.reconcileInsertedTenant(ctx, log, tenant)
 	return ctrl.Result{}, err
 }
 
-func (r *QueryReconciler) reconcileInsertedQuery(ctx context.Context, log logr.Logger, query *ossv1alpha1.Query) error {
+func (r *TenantMappingReconciler) reconcileInsertedTenant(ctx context.Context, log logr.Logger, tenant *ossv1alpha1.TenantMapping) error {
 	patchConfig := map[string]interface{}{
-		"queries": map[string]interface{}{
-			query.Spec.Namespace: map[string]interface{}{
-				query.Spec.Name: query.Spec.Revisions,
-			},
-		},
+		"mappings": tenant.Spec.Mappings,
 	}
 
 	instances := &ossv1alpha1.RestQLList{}
@@ -101,12 +97,12 @@ func (r *QueryReconciler) reconcileInsertedQuery(ctx context.Context, log logr.L
 			}
 		}
 
-		if restql.Status.AppliedQueries == nil {
-			restql.Status.AppliedQueries = make(map[string]ossv1alpha1.QueryNamespaceName)
+		if restql.Status.AppliedTenants == nil {
+			restql.Status.AppliedTenants = make(map[string]string)
 		}
 
-		qn := types.NamespacedName{Name: query.GetName(), Namespace: query.GetNamespace()}
-		restql.Status.AppliedQueries[qn.String()] = ossv1alpha1.QueryNamespaceName{Namespace: query.Spec.Namespace, Name: query.Spec.Name}
+		qn := types.NamespacedName{Name: tenant.GetName(), Namespace: tenant.GetNamespace()}
+		restql.Status.AppliedTenants[qn.String()] = tenant.Spec.Tenant
 		if err = r.Update(ctx, &restql); err != nil {
 			log.Error(err, "failed to update RestQL")
 		}
@@ -115,7 +111,7 @@ func (r *QueryReconciler) reconcileInsertedQuery(ctx context.Context, log logr.L
 	return nil
 }
 
-func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Logger, namespacedName types.NamespacedName) error {
+func (r *TenantMappingReconciler) reconcileDeletedTenant(ctx context.Context, log logr.Logger, namespacedName types.NamespacedName) error {
 	instances := &ossv1alpha1.RestQLList{}
 	if err := r.List(ctx, instances); err != nil {
 		log.Error(err, "unable to list RestQL instances")
@@ -123,11 +119,12 @@ func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Lo
 	}
 
 	for _, restql := range instances.Items {
-		if restql.Status.AppliedQueries == nil {
+		if restql.Status.AppliedTenants == nil {
 			continue
 		}
 
-		queryNamespaceName := restql.Status.AppliedQueries[namespacedName.String()]
+		//TODO: use this to remove only the tenant mapping
+		//tenant := restql.Status.AppliedTenants[namespacedName.String()]
 
 		configList := &corev1.ConfigMapList{}
 		err := r.List(ctx, configList, client.MatchingFields{configOwnerKey: restql.Name})
@@ -146,19 +143,7 @@ func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Lo
 				continue
 			}
 
-			queries, ok := cfg["queries"].(map[interface{}]interface{})
-			if !ok {
-				log.Error(err, "queries field does not exist or is not a map")
-				continue
-			}
-
-			namespace, ok := queries[queryNamespaceName.Namespace].(map[interface{}]interface{})
-			if !ok {
-				log.Error(err, "namespace field does not exist or is not a map")
-				continue
-			}
-
-			delete(namespace, queryNamespaceName.Name)
+			delete(cfg, "mappings")
 
 			bytes, err := yaml.Marshal(cfg)
 			if err != nil {
@@ -175,7 +160,7 @@ func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Lo
 			log.V(1).Info("deleted query from configuration successfully", "config", updatedYaml)
 		}
 
-		delete(restql.Status.AppliedQueries, namespacedName.String())
+		delete(restql.Status.AppliedTenants, namespacedName.String())
 		if err = r.Update(ctx, &restql); err != nil {
 			log.Error(err, "failed to update RestQL")
 		}
@@ -184,28 +169,8 @@ func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Lo
 	return nil
 }
 
-func mergeYamlConfig(currentCfg string, patchConfig map[string]interface{}) (string, error) {
-	cfg := make(map[string]interface{})
-	err := yaml.Unmarshal([]byte(currentCfg), &cfg)
-	if err != nil {
-		return "", err
-	}
-
-	err = mergo.Merge(&cfg, patchConfig)
-	if err != nil {
-		return "", err
-	}
-
-	mergedYamlBytes, err := yaml.Marshal(cfg)
-	if err != nil {
-		return "", err
-	}
-
-	return string(mergedYamlBytes), nil
-}
-
-func (r *QueryReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *TenantMappingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ossv1alpha1.Query{}).
+		For(&ossv1alpha1.TenantMapping{}).
 		Complete(r)
 }

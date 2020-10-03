@@ -235,9 +235,13 @@ func (r *RestQLReconciler) newDeployment(cr *ossv1alpha1.RestQL) (*apps.Deployme
 			Name:  "RESTQL_CONFIG",
 			Value: path.Join(configFileLocation, configFileName),
 		}
+		tenantVar := corev1.EnvVar{
+			Name:  "RESTQL_TENANT",
+			Value: cr.Spec.Tenant,
+		}
 
 		templateSpec.Containers[i].VolumeMounts = append(container.VolumeMounts, vm)
-		templateSpec.Containers[i].Env = append(container.Env, cfgVar)
+		templateSpec.Containers[i].Env = append(container.Env, cfgVar, tenantVar)
 	}
 
 	cr.Spec.Deployment.Template.Spec = templateSpec

@@ -6199,6 +6199,9 @@ spec:
               - selector
               - template
               type: object
+            tenant:
+              description: Tenant is the mappings scope to be used
+              type: string
           type: object
         status:
           description: RestQLStatus defines the observed state of RestQL
@@ -6216,6 +6219,10 @@ spec:
                 - name
                 - namespace
                 type: object
+              type: object
+            appliedTenants:
+              additionalProperties:
+                type: string
               type: object
           type: object
       type: object

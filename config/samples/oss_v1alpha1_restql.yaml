@@ -3,6 +3,7 @@ kind: RestQL
 metadata:
   name: restql-sample
 spec:
+  tenant: STAR-WARS
   config: |
     http:
       forwardPrefix: c_
@@ -26,8 +27,6 @@ spec:
         expiration: 24h
         refreshInterval: 100ms
         refreshQueueLength: 10
-    mappings:
-      planet: https://swapi.dev/api/planets/:id
   deployment:
     progressDeadlineSeconds: 12000
     replicas: 1

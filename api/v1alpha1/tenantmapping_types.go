@@ -17,60 +17,50 @@ limitations under the License.
 package v1alpha1
 
 import (
-	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// RestQLSpec defines the desired state of RestQL
-type RestQLSpec struct {
+// TenantMappingSpec defines the desired state of TenantMapping
+type TenantMappingSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Config is an YAML with RestQL parameters
-	// +optional
-	Config string `json:"config,omitempty"`
+	// Tenant is the identifier under which mappings are grouped
+	Tenant string `json:"tenant"`
 
-	// Tenant is the mappings scope to be used
-	// +optional
-	Tenant string `json:"tenant,omitempty"`
-
-	// Deployment defines the RestQL application
-	// +optional
-	Deployment apps.DeploymentSpec `json:"deployment,omitempty"`
+	// Mappings are name/URL associations used to resolved resources in restQL
+	Mappings map[string]string `json:"mappings"`
 }
 
-// RestQLStatus defines the observed state of RestQL
-type RestQLStatus struct {
+// TenantMappingStatus defines the observed state of TenantMapping
+type TenantMappingStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
-	AppliedQueries map[string]QueryNamespaceName `json:"appliedQueries,omitempty"`
-
-	AppliedTenants map[string]string `json:"appliedTenants,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// RestQL is the Schema for the restqls API
-type RestQL struct {
+// TenantMapping is the Schema for the tenantmappings API
+type TenantMapping struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RestQLSpec   `json:"spec,omitempty"`
-	Status RestQLStatus `json:"status,omitempty"`
+	Spec   TenantMappingSpec   `json:"spec,omitempty"`
+	Status TenantMappingStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// RestQLList contains a list of RestQL
-type RestQLList struct {
+// TenantMappingList contains a list of TenantMapping
+type TenantMappingList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RestQL `json:"items"`
+	Items           []TenantMapping `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&RestQL{}, &RestQLList{})
+	SchemeBuilder.Register(&TenantMapping{}, &TenantMappingList{})
 }

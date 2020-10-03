@@ -1,0 +1,8 @@
+apiVersion: oss.b2w.io/v1alpha1
+kind: TenantMapping
+metadata:
+  name: tenantmapping-sample
+spec:
+  tenant: STAR-WARS
+  mappings:
+    planet: https://swapi.dev/api/planets/:id
