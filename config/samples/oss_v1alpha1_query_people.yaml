@@ -1,7 +1,7 @@
 apiVersion: oss.b2w.io/v1alpha1
 kind: Query
 metadata:
-  name: query-sample
+  name: people-info-query
 spec:
   namespace: test
   name: people-info

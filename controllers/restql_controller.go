@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"gopkg.in/yaml.v2"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +32,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ossv1alpha1 "github.com/b2wdigital/restQL-operator/api/v1alpha1"
+)
+
+var (
+	configOwnerKey       = ".config.metadata.owner"
+	apiGVStr             = ossv1alpha1.GroupVersion.String()
+	restQLConfigFilename = "restql.yml"
 )
 
 // RestQLReconciler reconciles a RestQL object
@@ -67,11 +74,6 @@ func (r *RestQLReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 
 	return ctrl.Result{}, nil
 }
-
-var (
-	configOwnerKey = ".config.metadata.owner"
-	apiGVStr       = ossv1alpha1.GroupVersion.String()
-)
 
 func (r *RestQLReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := mgr.GetFieldIndexer().IndexField(&corev1.ConfigMap{}, configOwnerKey, func(rawObj runtime.Object) []string {
@@ -121,6 +123,21 @@ func (r *RestQLReconciler) reconcileConfig(ctx context.Context, log logr.Logger,
 		return err
 	}
 
+	yamlCfg := currentConfigMap.Data[restQLConfigFilename]
+	patchCfgStr := newConfigMap.Data[restQLConfigFilename]
+
+	var patchCfg map[string]interface{}
+	err = yaml.Unmarshal([]byte(patchCfgStr), &patchCfg)
+	if err != nil {
+		return err
+	}
+
+	mergedCfg, err := mergeYamlConfig(yamlCfg, patchCfg)
+	if err != nil {
+		return err
+	}
+
+	newConfigMap.Data[restQLConfigFilename] = mergedCfg
 	err = r.Update(ctx, newConfigMap)
 	if err != nil {
 		log.Error(err, "unexpected error when updating config map")

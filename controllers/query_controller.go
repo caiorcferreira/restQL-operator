@@ -22,7 +22,9 @@ import (
 	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -44,11 +46,21 @@ func (r *QueryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("query", req.NamespacedName)
 
 	query := &ossv1alpha1.Query{}
-	if err := r.Get(ctx, req.NamespacedName, query); err != nil {
+	err := r.Get(ctx, req.NamespacedName, query)
+	switch {
+	case apierrors.IsNotFound(err):
+		err := r.reconcileDeletedQuery(ctx, log, req.NamespacedName)
+		return ctrl.Result{}, err
+	case err != nil:
 		log.Error(err, "unable to fetch Query object")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, err
 	}
 
+	err = r.reconcileInsertedQuery(ctx, log, query)
+	return ctrl.Result{}, err
+}
+
+func (r *QueryReconciler) reconcileInsertedQuery(ctx context.Context, log logr.Logger, query *ossv1alpha1.Query) error {
 	patchConfig := map[string]interface{}{
 		"queries": map[string]interface{}{
 			query.Spec.Namespace: map[string]interface{}{
@@ -60,7 +72,7 @@ func (r *QueryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	instances := &ossv1alpha1.RestQLList{}
 	if err := r.List(ctx, instances); err != nil {
 		log.Error(err, "unable to list RestQL instances")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
 
 	for _, restql := range instances.Items {
@@ -74,7 +86,7 @@ func (r *QueryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		log.V(1).Info("fetched config maps", "config", configList.String())
 
 		for _, c := range configList.Items {
-			yamlCfg := c.Data["restql.yml"]
+			yamlCfg := c.Data[restQLConfigFilename]
 			mergedYaml, err := mergeYamlConfig(yamlCfg, patchConfig)
 			if err != nil {
 				log.Error(err, "failed to merge YAML")
@@ -83,20 +95,98 @@ func (r *QueryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 
 			log.V(1).Info("merged configuration successfully", "config", mergedYaml)
 
-			c.Data["restql.yml"] = mergedYaml
+			c.Data[restQLConfigFilename] = mergedYaml
 			if err = r.Update(ctx, &c); err != nil {
 				log.Error(err, "failed to update config maps")
 			}
 		}
 
+		if restql.Status.AppliedQueries == nil {
+			restql.Status.AppliedQueries = make(map[string]ossv1alpha1.QueryNamespaceName)
+		}
+
+		qn := types.NamespacedName{Name: query.GetName(), Namespace: query.GetNamespace()}
+		restql.Status.AppliedQueries[qn.String()] = ossv1alpha1.QueryNamespaceName{Namespace: query.Spec.Namespace, Name: query.Spec.Name}
+		if err = r.Update(ctx, &restql); err != nil {
+			log.Error(err, "failed to update config maps")
+		}
 	}
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
-func mergeYamlConfig(yamlCfg string, patchConfig map[string]interface{}) (string, error) {
+func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Logger, namespacedName types.NamespacedName) error {
+	instances := &ossv1alpha1.RestQLList{}
+	if err := r.List(ctx, instances); err != nil {
+		log.Error(err, "unable to list RestQL instances")
+		return client.IgnoreNotFound(err)
+	}
+
+	for _, restql := range instances.Items {
+		if restql.Status.AppliedQueries == nil {
+			continue
+		}
+
+		queryNamespaceName := restql.Status.AppliedQueries[namespacedName.String()]
+
+		configList := &corev1.ConfigMapList{}
+		err := r.List(ctx, configList, client.MatchingFields{configOwnerKey: restql.Name})
+		if err != nil {
+			log.Error(err, "failed to fetch config maps")
+			continue
+		}
+
+		log.V(1).Info("fetched config maps", "config", configList.String())
+
+		for _, c := range configList.Items {
+			yamlCfg := c.Data[restQLConfigFilename]
+			cfg := make(map[string]interface{})
+			if err := yaml.Unmarshal([]byte(yamlCfg), cfg); err != nil {
+				log.Error(err, "failed to unmarshal config")
+				continue
+			}
+
+			queries, ok := cfg["queries"].(map[interface{}]interface{})
+			if !ok {
+				log.Error(err, "queries field does not exist or is not a map")
+				continue
+			}
+
+			namespace, ok := queries[queryNamespaceName.Namespace].(map[interface{}]interface{})
+			if !ok {
+				log.Error(err, "namespace field does not exist or is not a map")
+				continue
+			}
+
+			delete(namespace, queryNamespaceName.Name)
+
+			bytes, err := yaml.Marshal(cfg)
+			if err != nil {
+				log.Error(err, "failed to marshal config")
+				continue
+			}
+
+			updatedYaml := string(bytes)
+			c.Data[restQLConfigFilename] = updatedYaml
+			if err = r.Update(ctx, &c); err != nil {
+				log.Error(err, "failed to update config maps")
+			}
+
+			log.V(1).Info("deleted query from configuration successfully", "config", updatedYaml)
+		}
+
+		delete(restql.Status.AppliedQueries, namespacedName.String())
+		if err = r.Update(ctx, &restql); err != nil {
+			log.Error(err, "failed to update config maps")
+		}
+	}
+
+	return nil
+}
+
+func mergeYamlConfig(currentCfg string, patchConfig map[string]interface{}) (string, error) {
 	cfg := make(map[string]interface{})
-	err := yaml.Unmarshal([]byte(yamlCfg), &cfg)
+	err := yaml.Unmarshal([]byte(currentCfg), &cfg)
 	if err != nil {
 		return "", err
 	}

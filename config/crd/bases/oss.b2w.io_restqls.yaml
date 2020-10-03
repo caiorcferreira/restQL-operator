@@ -6202,6 +6202,21 @@ spec:
           type: object
         status:
           description: RestQLStatus defines the observed state of RestQL
+          properties:
+            appliedQueries:
+              additionalProperties:
+                properties:
+                  name:
+                    description: Name is the unique identifier inside a namespace
+                    type: string
+                  namespace:
+                    description: Namespace is the group which the query belongs
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              type: object
           type: object
       type: object
   version: v1alpha1
