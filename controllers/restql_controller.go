@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"path"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -56,13 +57,13 @@ func (r *RestQLReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.V(0).Info("config reconciled")
+	log.V(1).Info("config reconciled")
 
 	err = r.reconcileDeploy(ctx, log, restql)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.V(0).Info("deploy reconciled")
+	log.V(1).Info("deploy reconciled")
 
 	return ctrl.Result{}, nil
 }
@@ -70,7 +71,7 @@ func (r *RestQLReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 func (r *RestQLReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ossv1alpha1.RestQL{}).
-		Owns(&apps.Deployment{}).
+		Owns(&apps.Deployment{}).WithEventFilter(&predicate.GenerationChangedPredicate{}).
 		Owns(&corev1.ConfigMap{}).
 		Complete(r)
 }
