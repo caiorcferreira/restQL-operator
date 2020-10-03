@@ -1,0 +1,20 @@
+# permissions for end users to view queries.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: query-viewer-role
+rules:
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - queries
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - queries/status
+  verbs:
+  - get

@@ -1,0 +1,9 @@
+apiVersion: oss.b2w.io/v1alpha1
+kind: Query
+metadata:
+  name: query-sample
+spec:
+  namespace: test
+  name: planet-info
+  revisions:
+    - "from planet with id = $id"

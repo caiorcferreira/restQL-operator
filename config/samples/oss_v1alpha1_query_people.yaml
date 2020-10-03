@@ -1,0 +1,9 @@
+apiVersion: oss.b2w.io/v1alpha1
+kind: Query
+metadata:
+  name: query-sample
+spec:
+  namespace: test
+  name: people-info
+  revisions:
+    - "from people with id = $id"

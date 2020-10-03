@@ -1,0 +1,67 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.3.0
+  creationTimestamp: null
+  name: queries.oss.b2w.io
+spec:
+  group: oss.b2w.io
+  names:
+    kind: Query
+    listKind: QueryList
+    plural: queries
+    singular: query
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      description: Query is the Schema for the queries API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: QuerySpec defines the desired state of Query
+          properties:
+            name:
+              description: Name is the unique identifier inside a namespace
+              type: string
+            namespace:
+              description: Namespace is the group which the query belongs
+              type: string
+            revisions:
+              description: Revisions are the immutable query texts identified by index
+              items:
+                type: string
+              type: array
+          required:
+          - name
+          - namespace
+          - revisions
+          type: object
+        status:
+          description: QueryStatus defines the observed state of Query
+          type: object
+      type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

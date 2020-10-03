@@ -4,4 +4,7 @@ resources:
 - group: oss
   kind: RestQL
   version: v1alpha1
+- group: oss
+  kind: Query
+  version: v1alpha1
 version: "2"

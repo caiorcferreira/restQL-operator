@@ -9,6 +9,26 @@ rules:
 - apiGroups:
   - oss.b2w.io
   resources:
+  - queries
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - oss.b2w.io
+  resources:
+  - queries/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - oss.b2w.io
+  resources:
   - restqls
   verbs:
   - create

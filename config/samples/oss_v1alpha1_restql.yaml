@@ -28,10 +28,6 @@ spec:
         refreshQueueLength: 10
     mappings:
       planet: https://swapi.dev/api/planets/:id
-    queries:
-      test:
-        planet-info:
-          - "from planet with id = $id"
   deployment:
     progressDeadlineSeconds: 12000
     replicas: 1

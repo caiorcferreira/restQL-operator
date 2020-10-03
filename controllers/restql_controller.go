@@ -68,7 +68,29 @@ func (r *RestQLReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	return ctrl.Result{}, nil
 }
 
+var (
+	configOwnerKey = ".config.metadata.owner"
+	apiGVStr       = ossv1alpha1.GroupVersion.String()
+)
+
 func (r *RestQLReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	err := mgr.GetFieldIndexer().IndexField(&corev1.ConfigMap{}, configOwnerKey, func(rawObj runtime.Object) []string {
+		config := rawObj.(*corev1.ConfigMap)
+		owner := metav1.GetControllerOf(config)
+		if owner == nil {
+			return nil
+		}
+
+		if owner.APIVersion != apiGVStr || owner.Kind != "RestQL" {
+			return nil
+		}
+
+		return []string{owner.Name}
+	})
+	if err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ossv1alpha1.RestQL{}).
 		Owns(&apps.Deployment{}).WithEventFilter(&predicate.GenerationChangedPredicate{}).
@@ -168,10 +190,6 @@ func (r *RestQLReconciler) newConfigMap(cr *ossv1alpha1.RestQL) (*corev1.ConfigM
 }
 
 func (r *RestQLReconciler) newDeployment(cr *ossv1alpha1.RestQL) (*apps.Deployment, error) {
-	labels := map[string]string{
-		"app": cr.Name,
-	}
-
 	configFileLocation := "/restql/config"
 	configFileName := "restql.yml"
 
@@ -206,6 +224,10 @@ func (r *RestQLReconciler) newDeployment(cr *ossv1alpha1.RestQL) (*apps.Deployme
 	}
 
 	cr.Spec.Deployment.Template.Spec = templateSpec
+
+	labels := map[string]string{
+		"app": cr.Name,
+	}
 	d := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Name + "-deployment",
