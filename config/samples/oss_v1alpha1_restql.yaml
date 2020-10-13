@@ -15,7 +15,7 @@ spec:
     logging:
       enable: true
       timestamp: true
-      level: debug
+      level: warn
       format: pretty
     cache:
       parser:

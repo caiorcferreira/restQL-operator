@@ -6224,6 +6224,8 @@ spec:
               additionalProperties:
                 type: string
               type: object
+            configHash:
+              type: string
           type: object
       type: object
   version: v1alpha1

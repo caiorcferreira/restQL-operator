@@ -91,19 +91,21 @@ func (r *TenantMappingReconciler) reconcileInsertedTenant(ctx context.Context, l
 
 			log.V(1).Info("merged configuration successfully", "config", mergedYaml)
 
-			c.Data[restQLConfigFilename] = mergedYaml
-			if err = r.Update(ctx, &c); err != nil {
-				log.Error(err, "failed to update config maps")
+			patch := c.DeepCopy()
+			patch.Data[restQLConfigFilename] = mergedYaml
+			if err = r.Patch(ctx, patch, client.MergeFrom(&c)); err != nil {
+				log.Error(err, "failed to patch config maps")
 			}
 		}
 
-		if restql.Status.AppliedTenants == nil {
-			restql.Status.AppliedTenants = make(map[string]string)
+		patchRestql := restql.DeepCopy()
+		if patchRestql.Status.AppliedTenants == nil {
+			patchRestql.Status.AppliedTenants = make(map[string]string)
 		}
 
 		qn := types.NamespacedName{Name: tenant.GetName(), Namespace: tenant.GetNamespace()}
-		restql.Status.AppliedTenants[qn.String()] = tenant.Spec.Tenant
-		if err = r.Update(ctx, &restql); err != nil {
+		patchRestql.Status.AppliedTenants[qn.String()] = tenant.Spec.Tenant
+		if err = r.Patch(ctx, patchRestql, client.MergeFrom(&restql)); err != nil {
 			log.Error(err, "failed to update RestQL")
 		}
 	}
@@ -152,17 +154,20 @@ func (r *TenantMappingReconciler) reconcileDeletedTenant(ctx context.Context, lo
 			}
 
 			updatedYaml := string(bytes)
-			c.Data[restQLConfigFilename] = updatedYaml
-			if err = r.Update(ctx, &c); err != nil {
-				log.Error(err, "failed to update config maps")
+
+			patch := c.DeepCopy()
+			patch.Data[restQLConfigFilename] = updatedYaml
+			if err = r.Patch(ctx, patch, client.MergeFrom(&c)); err != nil {
+				log.Error(err, "failed to patch config maps")
 			}
 
 			log.V(1).Info("deleted query from configuration successfully", "config", updatedYaml)
 		}
 
-		delete(restql.Status.AppliedTenants, namespacedName.String())
-		if err = r.Update(ctx, &restql); err != nil {
-			log.Error(err, "failed to update RestQL")
+		patchRestql := restql.DeepCopy()
+		delete(patchRestql.Status.AppliedTenants, namespacedName.String())
+		if err = r.Patch(ctx, patchRestql, client.MergeFrom(&restql)); err != nil {
+			log.Error(err, "failed to patch RestQL")
 		}
 	}
 

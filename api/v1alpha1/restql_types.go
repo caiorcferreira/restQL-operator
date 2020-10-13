@@ -49,6 +49,8 @@ type RestQLStatus struct {
 	AppliedQueries map[string]QueryNamespaceName `json:"appliedQueries,omitempty"`
 
 	AppliedTenants map[string]string `json:"appliedTenants,omitempty"`
+
+	ConfigHash string `json:"configHash,omitempty"`
 }
 
 // +kubebuilder:object:root=true

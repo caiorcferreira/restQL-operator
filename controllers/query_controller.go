@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"github.com/go-logr/logr"
-	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -95,20 +94,22 @@ func (r *QueryReconciler) reconcileInsertedQuery(ctx context.Context, log logr.L
 
 			log.V(1).Info("merged configuration successfully", "config", mergedYaml)
 
-			c.Data[restQLConfigFilename] = mergedYaml
-			if err = r.Update(ctx, &c); err != nil {
-				log.Error(err, "failed to update config maps")
+			patch := c.DeepCopy()
+			patch.Data[restQLConfigFilename] = mergedYaml
+			if err = r.Patch(ctx, patch, client.MergeFrom(&c)); err != nil {
+				log.Error(err, "failed to patch config maps")
 			}
 		}
 
-		if restql.Status.AppliedQueries == nil {
-			restql.Status.AppliedQueries = make(map[string]ossv1alpha1.QueryNamespaceName)
+		patchRestql := restql.DeepCopy()
+		if patchRestql.Status.AppliedQueries == nil {
+			patchRestql.Status.AppliedQueries = make(map[string]ossv1alpha1.QueryNamespaceName)
 		}
 
 		qn := types.NamespacedName{Name: query.GetName(), Namespace: query.GetNamespace()}
-		restql.Status.AppliedQueries[qn.String()] = ossv1alpha1.QueryNamespaceName{Namespace: query.Spec.Namespace, Name: query.Spec.Name}
-		if err = r.Update(ctx, &restql); err != nil {
-			log.Error(err, "failed to update RestQL")
+		patchRestql.Status.AppliedQueries[qn.String()] = ossv1alpha1.QueryNamespaceName{Namespace: query.Spec.Namespace, Name: query.Spec.Name}
+		if err = r.Patch(ctx, patchRestql, client.MergeFrom(&restql)); err != nil {
+			log.Error(err, "failed to patch RestQL")
 		}
 	}
 
@@ -167,41 +168,24 @@ func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Lo
 			}
 
 			updatedYaml := string(bytes)
-			c.Data[restQLConfigFilename] = updatedYaml
-			if err = r.Update(ctx, &c); err != nil {
-				log.Error(err, "failed to update config maps")
+
+			patch := c.DeepCopy()
+			patch.Data[restQLConfigFilename] = updatedYaml
+			if err = r.Patch(ctx, patch, client.MergeFrom(&c)); err != nil {
+				log.Error(err, "failed to patch config maps")
 			}
 
 			log.V(1).Info("deleted query from configuration successfully", "config", updatedYaml)
 		}
 
-		delete(restql.Status.AppliedQueries, namespacedName.String())
-		if err = r.Update(ctx, &restql); err != nil {
-			log.Error(err, "failed to update RestQL")
+		restqlPatch := restql.DeepCopy()
+		delete(restqlPatch.Status.AppliedQueries, namespacedName.String())
+		if err = r.Patch(ctx, restqlPatch, client.MergeFrom(&restql)); err != nil {
+			log.Error(err, "failed to patch RestQL")
 		}
 	}
 
 	return nil
-}
-
-func mergeYamlConfig(currentCfg string, patchConfig map[string]interface{}) (string, error) {
-	cfg := make(map[string]interface{})
-	err := yaml.Unmarshal([]byte(currentCfg), &cfg)
-	if err != nil {
-		return "", err
-	}
-
-	err = mergo.Merge(&cfg, patchConfig)
-	if err != nil {
-		return "", err
-	}
-
-	mergedYamlBytes, err := yaml.Marshal(cfg)
-	if err != nil {
-		return "", err
-	}
-
-	return string(mergedYamlBytes), nil
 }
 
 func (r *QueryReconciler) SetupWithManager(mgr ctrl.Manager) error {

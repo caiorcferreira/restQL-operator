@@ -18,6 +18,9 @@ package controllers
 
 import (
 	"context"
+	"crypto/sha1"
+	"fmt"
+	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,12 +58,15 @@ func (r *RestQLReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("restql", req.NamespacedName)
 
 	restql := &ossv1alpha1.RestQL{}
-	if err := r.Get(ctx, req.NamespacedName, restql); err != nil {
-		log.Error(err, "unable to fetch restQL object")
+	err := r.Get(ctx, req.NamespacedName, restql)
+	switch {
+	case apierrors.IsNotFound(err):
+		return ctrl.Result{}, nil
+	case err != nil:
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	err := r.reconcileConfig(ctx, log, restql)
+	err = r.reconcileConfig(ctx, log, restql)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -101,33 +107,57 @@ func (r *RestQLReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *RestQLReconciler) reconcileConfig(ctx context.Context, log logr.Logger, restql *ossv1alpha1.RestQL) error {
-	newConfigMap, err := r.newConfigMap(restql)
+	hash := sha1.New()
+	_, err := hash.Write([]byte(restql.Spec.Config))
 	if err != nil {
 		return err
 	}
 
+	cfgHashSum := string(hash.Sum(nil))
+
+	if restql.Status.ConfigHash != "" && restql.Status.ConfigHash == cfgHashSum {
+		return nil
+	}
+
+	restqlPatch := restql.DeepCopy()
+
 	currentConfigMap := &corev1.ConfigMap{}
 	err = r.Get(ctx, client.ObjectKey{
-		Name:      newConfigMap.GetName(),
-		Namespace: newConfigMap.GetNamespace(),
+		Name:      configMapName(restql),
+		Namespace: restql.GetNamespace(),
 	}, currentConfigMap)
 	switch {
 	case apierrors.IsNotFound(err):
-		err := r.Create(ctx, newConfigMap)
+		newConfigMap, err := r.newConfigMap(restql)
+		if err != nil {
+			return err
+		}
+
+		err = r.Create(ctx, newConfigMap)
 		if err != nil {
 			log.Error(err, "unexpected error when creating config map")
 			return client.IgnoreNotFound(err)
 		}
+
+		restqlPatch.Status.ConfigHash = cfgHashSum
+		err = r.Patch(ctx, restqlPatch, client.MergeFrom(restql))
+		if err != nil {
+			log.Error(err, "unexpected error when updating config hash")
+			return client.IgnoreNotFound(err)
+		}
+
+		fmt.Printf("exiting reconcile config\n")
+		return nil
 	case err != nil:
 		log.Error(err, "unexpected error when fetching config map")
 		return err
 	}
 
+	patchConfigMap := currentConfigMap.DeepCopy()
 	yamlCfg := currentConfigMap.Data[restQLConfigFilename]
-	patchCfgStr := newConfigMap.Data[restQLConfigFilename]
 
 	var patchCfg map[string]interface{}
-	err = yaml.Unmarshal([]byte(patchCfgStr), &patchCfg)
+	err = yaml.Unmarshal([]byte(restql.Spec.Config), &patchCfg)
 	if err != nil {
 		return err
 	}
@@ -137,10 +167,17 @@ func (r *RestQLReconciler) reconcileConfig(ctx context.Context, log logr.Logger,
 		return err
 	}
 
-	newConfigMap.Data[restQLConfigFilename] = mergedCfg
-	err = r.Update(ctx, newConfigMap)
+	patchConfigMap.Data[restQLConfigFilename] = mergedCfg
+	err = r.Patch(ctx, patchConfigMap, client.MergeFrom(currentConfigMap))
 	if err != nil {
 		log.Error(err, "unexpected error when updating config map")
+		return client.IgnoreNotFound(err)
+	}
+
+	restqlPatch.Status.ConfigHash = cfgHashSum
+	err = r.Patch(ctx, restqlPatch, client.MergeFrom(restql))
+	if err != nil {
+		log.Error(err, "unexpected error when updating config hash")
 		return client.IgnoreNotFound(err)
 	}
 
@@ -263,6 +300,26 @@ func (r *RestQLReconciler) newDeployment(cr *ossv1alpha1.RestQL) (*apps.Deployme
 		return nil, err
 	}
 	return d, nil
+}
+
+func mergeYamlConfig(currentCfg string, patchConfig map[string]interface{}) (string, error) {
+	cfg := make(map[string]interface{})
+	err := yaml.Unmarshal([]byte(currentCfg), &cfg)
+	if err != nil {
+		return "", err
+	}
+
+	err = mergo.Merge(&cfg, patchConfig, mergo.WithOverride)
+	if err != nil {
+		return "", err
+	}
+
+	mergedYamlBytes, err := yaml.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+
+	return string(mergedYamlBytes), nil
 }
 
 func configMapName(cr *ossv1alpha1.RestQL) string {
