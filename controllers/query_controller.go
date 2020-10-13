@@ -110,6 +110,11 @@ func (r *QueryReconciler) reconcileInsertedQuery(ctx context.Context, log logr.L
 		patchRestql.Status.AppliedQueries[qn.String()] = ossv1alpha1.QueryNamespaceName{Namespace: query.Spec.Namespace, Name: query.Spec.Name}
 		if err = r.Patch(ctx, patchRestql, client.MergeFrom(&restql)); err != nil {
 			log.Error(err, "failed to patch RestQL")
+			continue
+		}
+
+		if err = RestartRestQL(ctx, r, log, &restql); err != nil {
+			log.Error(err, "failed to restart RestQL")
 		}
 	}
 
@@ -182,6 +187,11 @@ func (r *QueryReconciler) reconcileDeletedQuery(ctx context.Context, log logr.Lo
 		delete(restqlPatch.Status.AppliedQueries, namespacedName.String())
 		if err = r.Patch(ctx, restqlPatch, client.MergeFrom(&restql)); err != nil {
 			log.Error(err, "failed to patch RestQL")
+			continue
+		}
+
+		if err = RestartRestQL(ctx, r, log, &restql); err != nil {
+			log.Error(err, "failed to restart RestQL")
 		}
 	}
 

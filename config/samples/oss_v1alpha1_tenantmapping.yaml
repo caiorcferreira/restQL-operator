@@ -6,3 +6,4 @@ spec:
   tenant: STAR-WARS
   mappings:
     planet: https://swapi.dev/api/planets/:id
+    people: https://swapi.dev/api/people/:id

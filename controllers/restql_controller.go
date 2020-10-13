@@ -20,19 +20,19 @@ import (
 	"context"
 	"crypto/sha1"
 	"fmt"
+	"github.com/go-logr/logr"
 	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"path"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"path"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"time"
 
 	ossv1alpha1 "github.com/b2wdigital/restQL-operator/api/v1alpha1"
 )
@@ -79,31 +79,6 @@ func (r *RestQLReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	log.V(1).Info("deploy reconciled")
 
 	return ctrl.Result{}, nil
-}
-
-func (r *RestQLReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	err := mgr.GetFieldIndexer().IndexField(&corev1.ConfigMap{}, configOwnerKey, func(rawObj runtime.Object) []string {
-		config := rawObj.(*corev1.ConfigMap)
-		owner := metav1.GetControllerOf(config)
-		if owner == nil {
-			return nil
-		}
-
-		if owner.APIVersion != apiGVStr || owner.Kind != "RestQL" {
-			return nil
-		}
-
-		return []string{owner.Name}
-	})
-	if err != nil {
-		return err
-	}
-
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&ossv1alpha1.RestQL{}).
-		Owns(&apps.Deployment{}).WithEventFilter(&predicate.GenerationChangedPredicate{}).
-		Owns(&corev1.ConfigMap{}).
-		Complete(r)
 }
 
 func (r *RestQLReconciler) reconcileConfig(ctx context.Context, log logr.Logger, restql *ossv1alpha1.RestQL) error {
@@ -196,22 +171,34 @@ func (r *RestQLReconciler) reconcileDeploy(ctx context.Context, log logr.Logger,
 
 	currentDeployment := &apps.Deployment{}
 	err = r.Get(ctx, client.ObjectKey{
-		Name:      newDeployment.GetName(),
-		Namespace: newDeployment.GetNamespace(),
+		Name:      deploymentName(restql),
+		Namespace: restql.GetNamespace(),
 	}, currentDeployment)
 	switch {
 	case apierrors.IsNotFound(err):
-		err := r.Create(ctx, newDeployment)
+		err = r.Create(ctx, newDeployment)
 		if err != nil {
 			log.Error(err, "unexpected error when creating deployment")
 			return client.IgnoreNotFound(err)
 		}
+
+		return nil
 	case err != nil:
 		log.Error(err, "unexpected error when fetching deployment")
 		return err
 	}
 
-	err = r.Update(ctx, newDeployment)
+	patch := currentDeployment.DeepCopy()
+	err = mergo.Merge(patch, newDeployment, mergo.WithOverride)
+	//annotations := patch.Spec.Template.ObjectMeta.Annotations
+	//if annotations == nil {
+	//	annotations = make(map[string]string)
+	//}
+	//
+	//annotations["updateTimestamp"] = time.Now().Format(time.RFC3339)
+	//patch.Spec.Template.ObjectMeta.Annotations = annotations
+
+	err = r.Patch(ctx, patch, client.MergeFrom(currentDeployment))
 	if err != nil {
 		log.Error(err, "unexpected error when updating deployment")
 		return client.IgnoreNotFound(err)
@@ -244,12 +231,36 @@ func (r *RestQLReconciler) newConfigMap(cr *ossv1alpha1.RestQL) (*corev1.ConfigM
 }
 
 func (r *RestQLReconciler) newDeployment(cr *ossv1alpha1.RestQL) (*apps.Deployment, error) {
+	template := makeRestqlDeploymentTemplate(cr)
+
+	cr.Spec.Deployment.Template = template
+
+	labels := map[string]string{
+		"app": cr.Name,
+	}
+	d := &apps.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deploymentName(cr),
+			Namespace: cr.Namespace,
+			Labels:    labels,
+		},
+		Spec: cr.Spec.Deployment,
+	}
+
+	err := ctrl.SetControllerReference(cr, d, r.Scheme)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func makeRestqlDeploymentTemplate(cr *ossv1alpha1.RestQL) corev1.PodTemplateSpec {
 	configFileLocation := "/restql/config"
 	configFileName := "restql.yml"
 
-	templateSpec := cr.Spec.Deployment.Template.Spec
+	template := cr.Spec.Deployment.Template
 
-	templateSpec.Volumes = append(templateSpec.Volumes, corev1.Volume{
+	template.Spec.Volumes = append(template.Spec.Volumes, corev1.Volume{
 		Name: "restql-config",
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -262,7 +273,7 @@ func (r *RestQLReconciler) newDeployment(cr *ossv1alpha1.RestQL) (*apps.Deployme
 			},
 		},
 	})
-	for i, container := range templateSpec.Containers {
+	for i, container := range template.Spec.Containers {
 		vm := corev1.VolumeMount{
 			Name:      "restql-config",
 			MountPath: configFileLocation,
@@ -277,29 +288,15 @@ func (r *RestQLReconciler) newDeployment(cr *ossv1alpha1.RestQL) (*apps.Deployme
 			Value: cr.Spec.Tenant,
 		}
 
-		templateSpec.Containers[i].VolumeMounts = append(container.VolumeMounts, vm)
-		templateSpec.Containers[i].Env = append(container.Env, cfgVar, tenantVar)
+		template.Spec.Containers[i].VolumeMounts = append(container.VolumeMounts, vm)
+		template.Spec.Containers[i].Env = append(container.Env, cfgVar, tenantVar)
 	}
 
-	cr.Spec.Deployment.Template.Spec = templateSpec
+	return template
+}
 
-	labels := map[string]string{
-		"app": cr.Name,
-	}
-	d := &apps.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-deployment",
-			Namespace: cr.Namespace,
-			Labels:    labels,
-		},
-		Spec: cr.Spec.Deployment,
-	}
-
-	err := ctrl.SetControllerReference(cr, d, r.Scheme)
-	if err != nil {
-		return nil, err
-	}
-	return d, nil
+func deploymentName(cr *ossv1alpha1.RestQL) string {
+	return cr.Name + "-deployment"
 }
 
 func mergeYamlConfig(currentCfg string, patchConfig map[string]interface{}) (string, error) {
@@ -324,4 +321,59 @@ func mergeYamlConfig(currentCfg string, patchConfig map[string]interface{}) (str
 
 func configMapName(cr *ossv1alpha1.RestQL) string {
 	return cr.Name + "-config"
+}
+
+func RestartRestQL(ctx context.Context, c client.Client, log logr.Logger, restql *ossv1alpha1.RestQL) error {
+	if restql.Spec.Deployment.String() == "nil" {
+		return nil
+	}
+
+	currentDeployment := &apps.Deployment{}
+	err := c.Get(ctx, client.ObjectKey{
+		Name:      deploymentName(restql),
+		Namespace: restql.GetNamespace(),
+	}, currentDeployment)
+	if err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	patch := currentDeployment.DeepCopy()
+	if patch.Spec.Template.ObjectMeta.Annotations == nil {
+		patch.Spec.Template.ObjectMeta.Annotations = make(map[string]string)
+	}
+
+	patch.Spec.Template.ObjectMeta.Annotations["updateTimestamp"] = time.Now().Format(time.RFC3339)
+
+	err = c.Patch(ctx, patch, client.MergeFrom(currentDeployment))
+	if err != nil {
+		log.Error(err, "unexpected error when restarting deployment")
+		return client.IgnoreNotFound(err)
+	}
+
+	return nil
+}
+
+func (r *RestQLReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	err := mgr.GetFieldIndexer().IndexField(&corev1.ConfigMap{}, configOwnerKey, func(rawObj runtime.Object) []string {
+		config := rawObj.(*corev1.ConfigMap)
+		owner := metav1.GetControllerOf(config)
+		if owner == nil {
+			return nil
+		}
+
+		if owner.APIVersion != apiGVStr || owner.Kind != "RestQL" {
+			return nil
+		}
+
+		return []string{owner.Name}
+	})
+	if err != nil {
+		return err
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&ossv1alpha1.RestQL{}).
+		Owns(&apps.Deployment{}).WithEventFilter(&predicate.GenerationChangedPredicate{}).
+		Owns(&corev1.ConfigMap{}).
+		Complete(r)
 }

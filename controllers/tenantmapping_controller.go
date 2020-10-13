@@ -107,6 +107,11 @@ func (r *TenantMappingReconciler) reconcileInsertedTenant(ctx context.Context, l
 		patchRestql.Status.AppliedTenants[qn.String()] = tenant.Spec.Tenant
 		if err = r.Patch(ctx, patchRestql, client.MergeFrom(&restql)); err != nil {
 			log.Error(err, "failed to update RestQL")
+			continue
+		}
+
+		if err = RestartRestQL(ctx, r, log, &restql); err != nil {
+			log.Error(err, "failed to restart RestQL")
 		}
 	}
 
@@ -124,9 +129,6 @@ func (r *TenantMappingReconciler) reconcileDeletedTenant(ctx context.Context, lo
 		if restql.Status.AppliedTenants == nil {
 			continue
 		}
-
-		//TODO: use this to remove only the tenant mapping
-		//tenant := restql.Status.AppliedTenants[namespacedName.String()]
 
 		configList := &corev1.ConfigMapList{}
 		err := r.List(ctx, configList, client.MatchingFields{configOwnerKey: restql.Name})
@@ -168,6 +170,11 @@ func (r *TenantMappingReconciler) reconcileDeletedTenant(ctx context.Context, lo
 		delete(patchRestql.Status.AppliedTenants, namespacedName.String())
 		if err = r.Patch(ctx, patchRestql, client.MergeFrom(&restql)); err != nil {
 			log.Error(err, "failed to patch RestQL")
+			continue
+		}
+
+		if err = RestartRestQL(ctx, r, log, &restql); err != nil {
+			log.Error(err, "failed to restart RestQL")
 		}
 	}
 

@@ -34,6 +34,11 @@ spec:
     selector:
       matchLabels:
         app: restql-golang-server-v4
+    strategy:
+      rollingUpdate:
+        maxSurge: 2
+        maxUnavailable: 2
+      type: RollingUpdate
     template:
       metadata:
         labels:
